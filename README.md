@@ -6,7 +6,13 @@
 
 **0.0.3** — an on-device signer for iOS that behaves like the App Store.
 
-[Download](../../releases/latest) · [Telegram](https://t.me/batsigner) · [Report an issue](../../issues)
+[![Release](https://img.shields.io/github/v/release/8yy/BatSign?style=for-the-badge&color=0a84ff)](../../releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/8yy/BatSign/total?style=for-the-badge&color=34c759)](../../releases)
+[![Platform](https://img.shields.io/badge/iOS-16.0%2B-blue?style=for-the-badge&logo=apple)](../../releases/latest)
+[![License](https://img.shields.io/badge/License-GPL--3.0-lightgrey?style=for-the-badge)](LICENSE)
+[![Telegram](https://img.shields.io/badge/Telegram-t.me%2Fbatsigner-26A5E4?style=for-the-badge&logo=telegram)](https://t.me/batsigner)
+
+[Download the latest IPA](../../releases/latest) · [Join the signer group](https://t.me/batsigner)
 
 </div>
 
