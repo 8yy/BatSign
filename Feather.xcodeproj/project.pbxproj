@@ -799,7 +799,7 @@
 		};
 		339776062DC9D0F800642FFB /* LicensePlistBuildTool */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 339776052DC9D05C00642FFB /* XCLocalSwiftPackageReference "LicensePlist" */;
+			package = 339776052DC9D05C00642FFB /* XCRemoteSwiftPackageReference "LicensePlist" */;
 			productName = "plugin:LicensePlistBuildTool";
 		};
 		33CF13382DB5ACFB0021D4C5 /* SWCompression */ = {
