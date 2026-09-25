@@ -10,6 +10,7 @@
 	BA7519AC0000000000000013 /* BatSignLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7519AC0000000000000012 /* BatSignLiveActivityBundle.swift */; };
 	BA7519AC000000000000000D /* BatSignLiveActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BA7519AC0000000000000002 /* BatSignLiveActivity.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 	BA7519AC0000000000000011 /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7519AC0000000000000010 /* DownloadActivityAttributes.swift */; };
+	BA7519AC0000000000000016 /* DownloadActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA7519AC0000000000000010 /* DownloadActivityAttributes.swift */; };
 		3305BBAC2DB8944200660D45 /* Vapor in Frameworks */ = {isa = PBXBuildFile; productRef = 3305BBAB2DB8944200660D45 /* Vapor */; };
 		330F68FC2DBF7C8600D8C35D /* NimbleExtensions in Frameworks */ = {isa = PBXBuildFile; productRef = 330F68FB2DBF7C8600D8C35D /* NimbleExtensions */; };
 		330F68FE2DBF7C8600D8C35D /* NimbleViews in Frameworks */ = {isa = PBXBuildFile; productRef = 330F68FD2DBF7C8600D8C35D /* NimbleViews */; };
@@ -30,7 +31,7 @@
 	BA7519AC0000000000000012 /* BatSignLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatSignActivityBundle.swift; sourceTree = "<group>"; };
 	BA7519AC0000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 	BA7519AC0000000000000002 /* BatSignLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BatSignLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-	BA7519AC0000000000000010 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Feather/Backend/LiveActivity/DownloadActivityAttributes.swift; sourceTree = "<group>"; };
+	BA7519AC0000000000000010 /* DownloadActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/DownloadActivityAttributes.swift; sourceTree = "<group>"; };
 		336D43972DB7454A00206400 /* MobileCoreServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MobileCoreServices.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.2.sdk/System/Library/Frameworks/MobileCoreServices.framework; sourceTree = DEVELOPER_DIR; };
 		3379C1B92DA869A1004372DA /* Feather.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BatSign.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		570920BD2F98A4F0008C4A83 /* Feather.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Feather.xcconfig; sourceTree = "<group>"; };
@@ -146,7 +147,7 @@
 			children = (
 				3379C1BB2DA869A1004372DA /* Feather */,
 				BA7519AC0000000000000015 /* BatSignLiveActivity */,
-		BA7519AC0000000000000010 /* DownloadActivityAttributes.swift */,
+				BA7519AC0000000000000010 /* DownloadActivityAttributes.swift */,
 				3371F7302DA9ECDD00281AC6 /* Frameworks */,
 				3379C1BA2DA869A1004372DA /* Products */,
 				570920BD2F98A4F0008C4A83 /* Feather.xcconfig */,
@@ -312,6 +313,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BA7519AC0000000000000016 /* DownloadActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
