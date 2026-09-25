@@ -1150,15 +1150,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 		_addDefaultCertificates()
 		_removeBundledSource()
 
-		// The catalogues this build ships with, put back if they are missing, and
-		// the addresses earlier builds used taken away. Both are needed on every
-		// launch rather than once: a phone that restored a backup without the
-		// source, or upgraded from a build that seeded a different address, must
-		// end in the same state as a fresh install — one built-in catalogue, and
-		// the retired ones gone.
-		BSBuiltInSources.removeLegacyBuiltIns()
-		BSBuiltInSources.seed()
-
 		UNUserNotificationCenter.current().delegate = self
 
 		#if !targetEnvironment(macCatalyst)

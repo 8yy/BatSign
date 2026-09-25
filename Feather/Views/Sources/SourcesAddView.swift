@@ -36,10 +36,8 @@ struct SourcesAddView: View {
 	
 	@State var recommendedSourcesData: [(url: URL, data: ASRepository)] = []
 	/// Featured sources the Add sheet recommends. BatSign ships none: the
-	/// catalogue that used to be recommended here was retired, and the built-in
-	/// catalogue the app now carries is deliberately invisible — seeded in the
-	/// backend, never offered or listed in the UI (see BSBuiltInSources). The
-	/// sheet is purely for sources the user brings.
+	/// app has no built-in catalogue and recommends nothing — the sheet is
+	/// purely for sources the user brings.
 	let recommendedSources: [URL] = []
 	
 	@State private var _isImporting = false

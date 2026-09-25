@@ -22,14 +22,8 @@ struct BSSourcesView: View {
 
 	/// The sources this screen manages: the ones the user added.
 	///
-	/// The catalogues the app ships with are filtered out here, and only here.
-	/// They are still stored, still fetched, and their apps still appear
-	/// throughout the app — what is excluded is the *management* of them, because
-	/// every row on this screen can be renamed, paused or removed, and a row that
-	/// cannot be removed has no business in that list. Their apps are reachable
-	/// from Apps, Today and Search like any others.
 	private var _sources: [AltSource] {
-		_allSources.filter { !BSBuiltInSources.isBuiltIn($0) }
+		_allSources
 	}
 
 	@State private var _isAddingPresenting = false
