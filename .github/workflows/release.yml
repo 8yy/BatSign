@@ -28,10 +28,19 @@ jobs:
           CANDIDATES=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -12)
           echo "$CANDIDATES"
           SELECTED=""
+          # Newest stable Xcode first; beta and GM-seed copies are skipped,
+          # their IDE-side project model has been crashing xcodebuild.
           for X in $(echo "$CANDIDATES" | sort -Vr); do
+            case "$(basename "$X")" in *Beta*|*beta*) continue ;; esac
             VER=$(basename "$X" | sed -E 's/Xcode_?([0-9]+).*/\1/')
             if [ "$VER" -ge 26 ] 2>/dev/null; then SELECTED="$X"; break; fi
           done
+          if [ -z "$SELECTED" ]; then
+            for X in $(echo "$CANDIDATES" | sort -Vr); do
+              case "$(basename "$X")" in *Beta*|*beta*) continue ;; esac
+              SELECTED="$X"; break
+            done
+          fi
           if [ -z "$SELECTED" ]; then SELECTED=$(echo "$CANDIDATES" | tail -1); fi
           echo "Using $SELECTED"
           sudo xcode-select -s "$SELECTED/Contents/Developer"

@@ -23,7 +23,7 @@ struct BSSourcesView: View {
 	/// The sources this screen manages: the ones the user added.
 	///
 	private var _sources: [AltSource] {
-		_allSources
+		Array(_allSources)
 	}
 
 	@State private var _isAddingPresenting = false
