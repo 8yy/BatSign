@@ -1,0 +1,42 @@
+{
+  "name": "BatSign Source",
+  "identifier": "com.batsign.repo",
+  "iconURL": "https://github.com/8yy/BatSign/raw/main/Feather/Resources/Assets.xcassets/AppIcon.appiconset/feather.png",
+  "website": "https://github.com/8yy/BatSign",
+  "apps": [
+    {
+      "name": "BatSign",
+      "bundleIdentifier": "app.batsign.ios",
+      "developerName": "@ihateios",
+      "iconURL": "https://github.com/8yy/BatSign/raw/main/Feather/Resources/Assets.xcassets/AppIcon.appiconset/feather.png",
+      "localizedDescription": "BatSign is an on-device signing store with App Store-style automatic updates, background signing and certificate renewal. Built on the open-source Feather project.",
+      "subtitle": "Automatic signing store",
+      "tintColor": "0a84ff",
+      "versions": [
+        {
+          "version": "0.0.3",
+          "date": "2026-09-25T00:00:00Z",
+          "size": 16339122,
+          "downloadURL": "https://github.com/8yy/BatSign/releases/download/v0.0.3/BatSign.ipa"
+        }
+      ],
+      "appPermissions": {},
+      "screenshotURLs": [],
+      "version": "0.0.3",
+      "versionDate": "2026-09-25T00:00:00Z",
+      "size": 16339122,
+      "downloadURL": "https://github.com/8yy/BatSign/releases/download/v0.0.3/BatSign.ipa",
+      "website": ""
+    }
+  ],
+  "news": [
+    {
+      "title": "Welcome to BatSign",
+      "identifier": "batsign-about",
+      "caption": "BatSign signs and installs apps with your own certificates, keeps them updated automatically from your repositories, and re-signs apps before their certificates expire \u2014 all in the background, App Store style.",
+      "tintColor": "0a84ff",
+      "date": "2026-09-05",
+      "notify": false
+    }
+  ]
+}

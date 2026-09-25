@@ -1,0 +1,15 @@
+//
+//  default.xcconfig
+//  Ventrica
+//
+//  Created by samsam on 2/5/26.
+//
+
+FEATHER_PROJECT_VERSION=0.0.3
+FEATHER_PRODUCT_BUNDLE_IDENTIFIER=app.batsign.ios
+FEATHER_DISAMBIGUATOR=${DEVELOPMENT_TEAM}
+
+AD_HOC_CODE_SIGNING_ALLOWED = YES
+
+DEPLOYMENT_LOCATION = YES
+DSTROOT = $(SRCROOT)/_build/
