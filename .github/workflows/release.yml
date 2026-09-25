@@ -24,19 +24,36 @@ jobs:
 
       - name: Select Xcode
         run: |
-          set -e
-          # Deterministic toolchain. The newest-Xcode pick walked into an
-          # xcodebuild crash inside the IDE package-graph model (26.6);
-          # the 26.1/26.2 line is what this project has always built on.
-          # Ordered preference, first match wins, newest stable as fallback.
-          for X in Xcode_26.1.1 Xcode_26.1 Xcode_26.2 Xcode_26.2.0 Xcode_26.5; do
-            if [ -d "/Applications/$X.app" ]; then SELECTED="/Applications/$X.app"; break; fi
+          set -euo pipefail
+          # The newest stable Xcode 26 or newer, chosen by version.
+          #
+          # The project needs an iOS 26 SDK, so anything older cannot compile it.
+          # Candidates are written out as "<version> <path>" and sorted with
+          # `sort -V`, so 26.10 outranks 26.9; sorting the directory names is
+          # what picks the wrong Xcode. Betas are skipped because a release is
+          # not cut with one.
+          #
+          # The loop is deliberately not wrapped in a command substitution: the
+          # runner's /bin/bash is 3.2, which mis-parses a compound statement
+          # inside `$( )`.
+          CANDIDATES=$(mktemp)
+          for APP in /Applications/Xcode*.app; do
+            [ -d "$APP" ] || continue
+            NAME=$(basename "$APP" .app)
+            if printf '%s' "$NAME" | grep -qiE 'beta|_rc'; then continue; fi
+            VER=${NAME#Xcode}
+            VER=${VER#_}
+            if ! printf '%s' "$VER" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then continue; fi
+            if [ "${VER%%.*}" -lt 26 ] 2>/dev/null; then continue; fi
+            NORM=$(printf '%s' "$VER" | awk -F. '{printf "%d.%d.%d", $1, $2+0, $3+0}')
+            printf '%s %s\n' "$NORM" "$APP" >> "$CANDIDATES"
           done
+          SELECTED=$(sort -V "$CANDIDATES" | tail -1 | awk '{print $2}')
+          rm -f "$CANDIDATES"
           if [ -z "$SELECTED" ]; then
-            for X in $(ls -d /Applications/Xcode*.app 2>/dev/null | sort -Vr); do
-              case "$(basename "$X")" in *Beta*|*beta*) continue ;; esac
-              SELECTED="$X"; break
-            done
+            echo "No stable Xcode 26 or newer on this runner; the build needs its iOS 26 SDK." >&2
+            ls -d /Applications/Xcode*.app || true
+            exit 1
           fi
           echo "Using $SELECTED"
           sudo xcode-select -s "$SELECTED/Contents/Developer"
