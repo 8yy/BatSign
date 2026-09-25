@@ -269,7 +269,7 @@
 				330F68FF2DC03DF400D8C35D /* XCLocalSwiftPackageReference "NimbleKit" */,
 				3346F8372DC6C68300C7D508 /* XCRemoteSwiftPackageReference "Nuke" */,
 				33693A062DC8BF5B00730215 /* XCLocalSwiftPackageReference "AltSourceKit" */,
-				339776052DC9D05C00642FFB /* XCLocalSwiftPackageReference "LicensePlist" */,
+				339776052DC9D05C00642FFB /* XCRemoteSwiftPackageReference "LicensePlist" */,
 				3349E7652DEFB46F00E317ED /* XCLocalSwiftPackageReference "IDeviceKitten" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -731,9 +731,13 @@
 				minimumVersion = 2.1.2;
 			};
 		};
-		339776052DC9D05C00642FFB /* XCLocalSwiftPackageReference "LicensePlist" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = packages/LicensePlist;
+		339776052DC9D05C00642FFB /* XCRemoteSwiftPackageReference "LicensePlist" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mono0926/LicensePlist";
+			requirement = {
+				kind = exactVersion;
+				minimumVersion = 3.27.1;
+			};
 		};
 		33CF13372DB5ACFB0021D4C5 /* XCRemoteSwiftPackageReference "SWCompression" */ = {
 			isa = XCRemoteSwiftPackageReference;
