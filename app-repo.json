@@ -15,16 +15,16 @@
       "versions": [
         {
           "version": "0.0.4",
-          "date": "2026-09-25T00:00:00Z",
-          "size": 16339122,
+          "date": "2026-10-10T12:04:38Z",
+          "size": 16413210,
           "downloadURL": "https://github.com/8yy/BatSign/releases/download/v0.0.4/BatSign.ipa"
         }
       ],
       "appPermissions": {},
       "screenshotURLs": [],
       "version": "0.0.4",
-      "versionDate": "2026-09-25T00:00:00Z",
-      "size": 16339122,
+      "versionDate": "2026-10-10T12:04:38Z",
+      "size": 16413210,
       "downloadURL": "https://github.com/8yy/BatSign/releases/download/v0.0.4/BatSign.ipa",
       "website": ""
     }
@@ -33,7 +33,7 @@
     {
       "title": "Welcome to BatSign",
       "identifier": "batsign-about",
-      "caption": "BatSign signs and installs apps with your own certificates, keeps them updated automatically from your repositories, and re-signs apps before their certificates expire \u2014 all in the background, App Store style.",
+      "caption": "BatSign signs and installs apps with your own certificates, keeps them updated automatically from your repositories, and re-signs apps before their certificates expire — all in the background, App Store style.",
       "tintColor": "0a84ff",
       "date": "2026-09-05",
       "notify": false
