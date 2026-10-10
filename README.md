@@ -4,7 +4,7 @@
 
 # BatSign
 
-**0.0.3** — an on-device signer for iOS that behaves like the App Store.
+**0.0.4** — an on-device signer for iOS that behaves like the App Store.
 
 [![Release](https://img.shields.io/github/v/release/8yy/BatSign?style=for-the-badge&color=0a84ff)](../../releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/8yy/BatSign/total?style=for-the-badge&color=34c759)](../../releases)
