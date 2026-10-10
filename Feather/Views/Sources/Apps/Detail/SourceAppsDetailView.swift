@@ -487,14 +487,11 @@ extension SourceAppsDetailView {
 		// in parallel. Once it has finished, they draw regardless: a shot that
 		// could not be measured is still a shot, and hiding it for ever is how a
 		// Preview goes missing without saying why.
-		let ready = _showsShots
 		return ScrollView(.horizontal, showsIndicators: false) {
 			HStack(alignment: .top, spacing: 10) {
 				ForEach(shots.indices, id: \.self) { index in
 					let shot = shots[index]
 					BSAppShotCard(shot: shot, size: size)
-						.opacity(ready ? 1 : 0)
-						.animation(.easeOut(duration: 0.18), value: ready)
 						.onTapGesture {
 							_selectedScreenshotIndex = index
 							_isScreenshotPreviewPresented = true
@@ -545,7 +542,7 @@ extension SourceAppsDetailView {
 
 	/// Whether the carousel may draw yet.
 	private var _showsShots: Bool {
-		_rowAspect != nil || _shapesResolved
+		true
 	}
 
 	/// The shape the whole row is built around: the first shot's own when it

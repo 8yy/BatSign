@@ -595,20 +595,62 @@ final class AutoUpdateManager: ObservableObject {
 
 	#if !targetEnvironment(macCatalyst)
 	func scheduleBackgroundRefresh() {
-		let request = BGAppRefreshTaskRequest(identifier: "\(Bundle.main.bundleIdentifier!).refresh")
+		guard let bundleIdentifier = Bundle.main.bundleIdentifier, !bundleIdentifier.isEmpty else {
+			Logger.notify.error("updates: cannot schedule background refresh without a bundle identifier")
+			return
+		}
+		let request = BGAppRefreshTaskRequest(identifier: "\(bundleIdentifier).refresh")
 		request.earliestBeginDate = Date(timeIntervalSinceNow: 4 * 3600)
-		try? BGTaskScheduler.shared.submit(request)
+		do {
+			try BGTaskScheduler.shared.submit(request)
+		} catch {
+			// Background refresh is opportunistic, but a rejected request should
+			// be observable instead of silently masquerading as a scheduled check.
+			Logger.notify.error("updates: background refresh scheduling failed — \(error.localizedDescription, privacy: .public)")
+		}
 	}
 
 	static func registerBackgroundRefresh() {
+		guard let bundleIdentifier = Bundle.main.bundleIdentifier, !bundleIdentifier.isEmpty else {
+			Logger.notify.error("updates: cannot register background refresh without a bundle identifier")
+			return
+		}
+		let identifier = "\(bundleIdentifier).refresh"
 		BGTaskScheduler.shared.register(
-			forTaskWithIdentifier: "\(Bundle.main.bundleIdentifier!).refresh",
+			forTaskWithIdentifier: identifier,
 			using: nil
 		) { task in
+			guard let refreshTask = task as? BGAppRefreshTask else {
+				task.setTaskCompleted(success: false)
+				return
+			}
+			// iOS can expire a refresh while repository requests are pending. Mark
+			// expiration immediately and complete once; only report success if the
+			// check finished before expiration.
+			let completionLock = NSLock()
+			var finished = false
+			var expired = false
+			func complete(success: Bool) {
+				completionLock.lock()
+				guard !finished else {
+					completionLock.unlock()
+					return
+				}
+				finished = true
+				let result = success && !expired
+				completionLock.unlock()
+				refreshTask.setTaskCompleted(success: result)
+			}
+			refreshTask.expirationHandler = {
+				completionLock.lock()
+				expired = true
+				completionLock.unlock()
+				complete(success: false)
+			}
 			Task { @MainActor in
+				defer { AutoUpdateManager.shared.scheduleBackgroundRefresh() }
 				await AutoUpdateManager.shared.checkNow(notifyWhenClean: false, silent: true)
-				AutoUpdateManager.shared.scheduleBackgroundRefresh()
-				task.setTaskCompleted(success: true)
+				complete(success: true)
 			}
 		}
 	}

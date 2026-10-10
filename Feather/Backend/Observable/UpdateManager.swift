@@ -330,26 +330,85 @@ final class UpdateManager: ObservableObject {
 	/// source publishing something unparseable never updates anything.
 	private func _isRemoteNewer(_ remote: String, than local: String?) -> Bool {
 		guard let local else { return true }
-		if remote == local { return false }
-
-		let remoteParts = remote.split(separator: ".").map { String($0) }
-		let localParts = local.split(separator: ".").map { String($0) }
-
-		// Both sides numeric enough to order: compare component by component,
-		// a missing component counting as zero ("1.0" == "1.0.0").
-		if remoteParts.allSatisfy({ Int($0) != nil }), localParts.allSatisfy({ Int($0) != nil }) {
-			let count = max(remoteParts.count, localParts.count)
-			for index in 0..<count {
-				let remotePart = index < remoteParts.count ? Int(remoteParts[index]) ?? 0 : 0
-				let localPart = index < localParts.count ? Int(localParts[index]) ?? 0 : 0
-				if remotePart != localPart { return remotePart > localPart }
-			}
+		let remoteParts = remote.split(separator: ".", omittingEmptySubsequences: false)
+			.map(_versionComponent)
+		let localParts = local.split(separator: ".", omittingEmptySubsequences: false)
+			.map(_versionComponent)
+		guard !remoteParts.isEmpty, !localParts.isEmpty,
+			remoteParts.allSatisfy({ $0 != nil }), localParts.allSatisfy({ $0 != nil }) else {
+			// Unknown version formats have no reliable ordering. Lexical comparison
+			// can label a downgrade as an update (or hide a genuine one).
 			return false
 		}
 
-		return remote > local
+		let remotePartsUnwrapped = remoteParts.compactMap { $0 }
+		let localPartsUnwrapped = localParts.compactMap { $0 }
+		for index in 0..<max(remotePartsUnwrapped.count, localPartsUnwrapped.count) {
+			let remotePart = index < remotePartsUnwrapped.count
+				? remotePartsUnwrapped[index]
+				: VersionComponent(number: 0, suffix: "")
+			let localPart = index < localPartsUnwrapped.count
+				? localPartsUnwrapped[index]
+				: VersionComponent(number: 0, suffix: "")
+			if remotePart.number != localPart.number {
+				return remotePart.number > localPart.number
+			}
+			if remotePart.suffix != localPart.suffix {
+				// A plain release outranks a suffixed prerelease on the same
+				// numeric component; suffixes otherwise compare naturally (b10 > b9).
+				if remotePart.suffix.isEmpty { return true }
+				if localPart.suffix.isEmpty { return false }
+				return _suffixIsNewer(remotePart.suffix, than: localPart.suffix)
+			}
+		}
+		return false
 	}
-	
+
+	private struct VersionComponent {
+		let number: Int
+		let suffix: String
+	}
+
+	private func _versionComponent(_ component: Substring) -> VersionComponent? {
+		let digits = component.prefix { $0 >= "0" && $0 <= "9" }
+		guard !digits.isEmpty, let number = Int(digits) else { return nil }
+		return VersionComponent(number: number, suffix: String(component.dropFirst(digits.count)).lowercased())
+	}
+
+	private func _suffixIsNewer(_ remote: String, than local: String) -> Bool {
+		func runs(_ value: String) -> [String] {
+			var result: [String] = []
+			var current = ""
+			var previousWasNumber: Bool?
+			for character in value {
+				let isNumber = character >= "0" && character <= "9"
+				if let previousWasNumber, previousWasNumber != isNumber {
+					result.append(current)
+					current = ""
+				}
+				current.append(character)
+				previousWasNumber = isNumber
+			}
+			if !current.isEmpty { result.append(current) }
+			return result
+		}
+
+		let remoteRuns = runs(remote)
+		let localRuns = runs(local)
+		for index in 0..<max(remoteRuns.count, localRuns.count) {
+			guard index < remoteRuns.count else { return false }
+			guard index < localRuns.count else { return true }
+			let remoteRun = remoteRuns[index]
+			let localRun = localRuns[index]
+			if remoteRun == localRun { continue }
+			if let remoteNumber = Int(remoteRun), let localNumber = Int(localRun) {
+				return remoteNumber > localNumber
+			}
+			return remoteRun.localizedStandardCompare(localRun) == .orderedDescending
+		}
+		return false
+	}
+
 	private func _normalizedSourceURL(_ url: URL) -> String {
 		var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
 		let scheme = components?.scheme?.lowercased()

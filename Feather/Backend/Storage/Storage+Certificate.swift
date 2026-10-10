@@ -19,12 +19,8 @@ extension Storage {
 		expiration: Date,
 		isDefault: Bool = false,
 		completion: @escaping (Error?) -> Void
-	) {
-		// The insert happens where the context lives, not on whatever thread the
-		// certificate pipeline happens to be on — the same fix `addImported`
-		// carries. `FR.handleCertificateFiles` runs its handler in a detached
-		// task, and a Core Data context touched from that task is a crash. The
-		// haptic and the completion stay on the main queue, after the save.
+		) {
+		var saveError: Error?
 		perform {
 			let new = CertificatePair(context: self.context)
 			new.uuid = uuid
@@ -34,14 +30,21 @@ extension Storage {
 			new.expiration = expiration
 			new.nickname = nickname
 			new.isDefault = isDefault
-			Storage.shared.revokagedCertificate(for: new)
-			self.saveContext()
+			saveError = self.saveContext()
+			if saveError != nil {
+				self.context.delete(new)
+			} else {
+				// Only start async work for a certificate that actually exists in
+				// the store. Otherwise the callback can retain a deleted object and
+				// later try to save it after the insert failed.
+				self.revokagedCertificate(for: new)
+			}
 		} then: {
 			UIImpactFeedbackGenerator(style: .light).impactOccurred()
-			completion(nil)
+			completion(saveError)
 		}
 	}
-	
+
 	func deleteCertificate(for cert: CertificatePair) {
 		if let url = getUuidDirectory(for: cert) {
 			try? FileManager.default.removeItem(at: url)

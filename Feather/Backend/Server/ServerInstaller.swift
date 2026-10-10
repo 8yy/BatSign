@@ -53,8 +53,16 @@ class ServerInstaller: Identifiable, ObservableObject {
 	}
 
 	/// Whether the local install server came up. The other two install routes
-	/// (`idevice` and the external manifest service) do not need it.
+	/// (`idevice`) does not need it.
 	var isAvailable: Bool { _server != nil }
+
+	/// Stop serving the staged package once install has failed or timed out.
+	/// Idempotent because view teardown and failure recovery can race.
+	func stop() {
+		_shutdownServer()
+		_server = nil
+		packageUrl = nil
+	}
 	
 	deinit {
 		_shutdownServer()

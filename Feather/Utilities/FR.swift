@@ -10,6 +10,7 @@ import UIKit.UIImage
 import Zsign
 import NimbleJSON
 import AltSourceKit
+import IDevice
 import IDeviceSwift
 
 	enum FR {
@@ -131,14 +132,60 @@ import IDeviceSwift
 		return true
 	}
 	
-	static func movePairing(_ url: URL) {
+	static func movePairing(_ url: URL) throws {
 		let fileManager = FileManager.default
-		let dest = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
-		
-		try? fileManager.removeFileIfNeeded(at: dest)
-		
-		try? fileManager.copyItem(at: url, to: dest)
-		
+		let dest = URL(fileURLWithPath: HeartbeatManager.pairingFile())
+		let staging = dest.deletingLastPathComponent()
+			.appendingPathComponent(".pairing-import-\(UUID().uuidString).plist")
+		let needsScopedAccess = url.startAccessingSecurityScopedResource()
+		defer {
+			if needsScopedAccess { url.stopAccessingSecurityScopedResource() }
+			try? fileManager.removeItem(at: staging)
+		}
+
+		// Validate the document before replacing a known-good pairing record.
+		let data = try Data(contentsOf: url)
+		let object = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+		guard let dictionary = object as? [String: Any], !dictionary.isEmpty else {
+			throw NSError(
+				domain: "BatSign.PairingImport",
+				code: 1,
+				userInfo: [NSLocalizedDescriptionKey: String.localized("The selected file is not a valid pairing property list.")]
+			)
+		}
+		try fileManager.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+		try data.write(to: staging, options: .atomic)
+
+		// Ask the same native parser used by the installer to validate the exact
+		// staged bytes before we swap them into the active location.
+		var parsedLegacy: OpaquePointer?
+		let legacyParseError = staging.path.withCString { path in
+			idevice_pairing_file_read(path, &parsedLegacy)
+		}
+		if legacyParseError == nil, let parsedLegacy {
+			idevice_pairing_file_free(parsedLegacy)
+		} else {
+			var parsedRSD: OpaquePointer?
+			let rsdParseError = staging.path.withCString { path in
+				rp_pairing_file_read(path, &parsedRSD)
+			}
+			if rsdParseError == nil, let parsedRSD {
+				rp_pairing_file_free(parsedRSD)
+			} else {
+			throw NSError(
+				domain: "BatSign.PairingImport",
+				code: 2,
+				userInfo: [NSLocalizedDescriptionKey: String.localized("The pairing record could not be read as either a legacy or Remote Pairing record. Export a fresh .mobiledevicepairing or .mobilepair file and try again.")]
+			)
+			}
+		}
+
+		if fileManager.fileExists(atPath: dest.path) {
+			_ = try fileManager.replaceItemAt(dest, withItemAt: staging, backupItemName: nil, options: .usingNewMetadataOnly)
+		} else {
+			try fileManager.moveItem(at: staging, to: dest)
+		}
+
 		HeartbeatManager.shared.start(true)
 	}
 	

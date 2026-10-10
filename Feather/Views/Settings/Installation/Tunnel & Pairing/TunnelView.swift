@@ -8,6 +8,7 @@
 import SwiftUI
 import NimbleViews
 import IDeviceSwift
+import UniformTypeIdentifiers
 
 // MARK: - View
 struct TunnelView: View {
@@ -73,11 +74,18 @@ struct TunnelView: View {
 		}
 		.sheet(isPresented: $_isImportingPairingPresenting) {
 			FileImporterRepresentableView(
-				allowedContentTypes:  [.xmlPropertyList, .plist, .mobiledevicepairing],
+				allowedContentTypes: [.xmlPropertyList, .plist, .mobiledevicepairing, UTType(filenameExtension: "mobilepair", conformingTo: .data)!],
 				onDocumentsPicked: { urls in
 					guard let selectedFileURL = urls.first else { return }
-					FR.movePairing(selectedFileURL)
-					doesHavePairingFile = true
+					do {
+						try FR.movePairing(selectedFileURL)
+						doesHavePairingFile = true
+					} catch {
+						UIAlertController.showAlertWithOk(
+							title: .localized("Pairing File"),
+							message: error.localizedDescription
+						)
+					}
 				}
 			)
 			.ignoresSafeArea()

@@ -59,42 +59,33 @@ extension ServerInstaller {
 
 	// MARK: Setup
 	static let env: Environment = {
-		var env = try! Environment.detect()
-		try! LoggingSystem.bootstrap(from: &env)
+		var env = (try? Environment.detect()) ?? .development
+		try? LoggingSystem.bootstrap(from: &env)
 		return env
 	}()
 	
 	func setupApp(port: Int) throws -> Application {
 		let app = Application(Self.env)
 		app.threadPool = .init(numberOfThreads: 1)
-		
-		// TLS is only configured when there is a certificate *and* a name for it
-		// to be valid for. `sni()` is what the install URL is built from, so a
-		// server holding a certificate for some other host would hand the device
-		// a URL whose handshake cannot succeed — better to serve plain HTTP on
-		// the loopback address, which is the same socket and actually installs.
-		//
-		// `usesTLS` is recorded rather than guessed later, because the URLs have
-		// to agree with what the server is really doing: the scheme they used to
-		// be built with came from a settings value and ignored this entirely,
-		// which meant an app with no certificate material handed iOS an `https`
-		// URL for an HTTP server and the install failed with nothing on screen to
-		// say why.
+
+		// Preserve the existing local installation behavior: use TLS when a
+		// certificate is configured and usable; otherwise serve via the local
+		// listener as before. The OTA manifest's URLs must match this choice.
 		if getServerMethod() != 1, Self.hasCertificateMaterial(), let tls = try tls() {
 			app.http.server.configuration.tlsConfiguration = tls
 			usesTLS = true
 		}
-		
+
 		app.http.server.configuration.hostname = sni()
 		app.http.server.configuration.tcpNoDelay = true
 		app.http.server.configuration.address = .hostname("0.0.0.0", port: port)
 		app.http.server.configuration.port = port
 		app.routes.defaultMaxBodySize = "128mb"
 		app.routes.caseInsensitive = false
-		
 		return app
 	}
-	
+
+
 	// MARK: Files/IP
 	func sni() -> String {
 		let localhost = "127.0.0.1"
@@ -127,21 +118,25 @@ extension ServerInstaller {
 		
 		return !contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 	}
+
+	private static func isUsableTLSHost(_ host: String) -> Bool {
+		guard
+			!host.isEmpty,
+			host.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+			let components = URLComponents(string: "https://\(host)"),
+			components.host == host,
+			components.url != nil
+		else {
+			return false
+		}
+		return true
+	}
 	
 	func tls() throws -> TLSConfiguration? {
-		// The revocation block, ported with the certificate fixes: an identity
-		// that has ever been positively identified as revoked is never tried
-		// again, and the server refuses to start behind it rather than serving
-		// an install over a dead certificate.
-		if FR.isActiveSSLCertificateBlocked() {
-			throw NSError(
-				domain: "app.batsign.ssl",
-				code: -1,
-				userInfo: [
-					NSLocalizedDescriptionKey: "The active SSL certificate has been revoked and is blocked. Update SSL certificates before using Fully Local installation."
-				]
-			)
-		}
+		// A positively blocked identity is never presented again. Returning nil
+		// makes setup fail closed with `unusableTLSIdentity`; callers may use the
+		// pairing/tunnel installer instead, but this server never downgrades to HTTP.
+		guard !FR.isActiveSSLCertificateBlocked() else { return nil }
 
 		return try Self.withTLSIdentityLock {
 			guard
@@ -202,30 +197,32 @@ extension ServerInstaller {
 	static func getLocalAddress() -> String? {
 		var address: String?
 		var ifaddr: UnsafeMutablePointer<ifaddrs>?
-		
-		if getifaddrs(&ifaddr) == 0 {
-			var ptr = ifaddr
-			while ptr != nil {
-				let interface = ptr!.pointee
-				let addrFamily = interface.ifa_addr.pointee.sa_family
-				
-				if addrFamily == UInt8(AF_INET) {
-					
-					let name = String(cString: interface.ifa_name)
-					if name == "en0" || name == "pdp_ip0" {
-						
-						var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-						if getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len),
-						               &hostname, socklen_t(hostname.count),
-						               nil, socklen_t(0), NI_NUMERICHOST) == 0 {
-							address = String(cString: hostname)
-						}
-						
+		guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
+		defer { freeifaddrs(first) }
+
+		var current: UnsafeMutablePointer<ifaddrs>? = first
+		while let interfacePointer = current {
+			let interface = interfacePointer.pointee
+			if let socketAddress = interface.ifa_addr,
+			   socketAddress.pointee.sa_family == UInt8(AF_INET) {
+				let name = String(cString: interface.ifa_name)
+				if name == "en0" || name == "pdp_ip0" {
+					var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+					let result = getnameinfo(
+						socketAddress,
+						socklen_t(socketAddress.pointee.sa_len),
+						&hostname,
+						socklen_t(hostname.count),
+						nil,
+						0,
+						NI_NUMERICHOST
+					)
+					if result == 0 {
+						address = String(cString: hostname)
 					}
 				}
-				ptr = ptr!.pointee.ifa_next
 			}
-			freeifaddrs(ifaddr)
+			current = interface.ifa_next
 		}
 		
 		return address

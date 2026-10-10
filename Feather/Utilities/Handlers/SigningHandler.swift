@@ -241,7 +241,7 @@ final class SigningHandler: NSObject {
 		// The Library row is a main-queue write, and it is made from values copied
 		// out before this detached task started — neither the app nor the
 		// certificate object is read from here.
-		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
 			Task { @MainActor in
 				Storage.shared.addSigned(
 					uuid: self._uuid,
@@ -251,9 +251,13 @@ final class SigningHandler: NSObject {
 					appIdentifier: appIdentifier,
 					appVersion: appVersion,
 					appIcon: appIcon
-				) { _ in
-					Logger.signing.info("[\(self._uuid)] Added to database")
-					continuation.resume()
+				) { error in
+					if let error {
+						continuation.resume(throwing: error)
+					} else {
+						Logger.signing.info("[\(self._uuid)] Added to database")
+						continuation.resume()
+					}
 				}
 			}
 		}

@@ -80,8 +80,14 @@ struct BSBulkSignStrip: View {
 		.padding(14)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.bsCard(cornerRadius: BS.radiusCard)
-		.animation(.snappy(duration: 0.25), value: run.items)
-		.animation(.snappy(duration: 0.25), value: run.isOver)
+		.animation(
+			UIAccessibility.isReduceMotionEnabled ? nil : .snappy(duration: 0.25),
+			value: run.items
+		)
+		.animation(
+			UIAccessibility.isReduceMotionEnabled ? nil : .snappy(duration: 0.25),
+			value: run.isOver
+		)
 	}
 
 	private func _ring(_ run: BSBulkSign.Run) -> some View {

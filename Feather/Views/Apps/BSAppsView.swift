@@ -129,9 +129,11 @@ struct BSAppsView: View {
 	// MARK: Indexing
 
 	private func _buildIndex() async {
+		_isIndexing = true
+		defer { _isIndexing = false }
+
 		if _sources.isEmpty {
 			_index = []
-			_isIndexing = false
 			return
 		}
 
@@ -149,7 +151,6 @@ struct BSAppsView: View {
 		let key = _indexKey
 		if let cached = BSAppIndex.cached(for: key) {
 			_index = cached
-			_isIndexing = false
 			if _isSearching {
 				_results = BSAppIndex.filter(cached, query: _query.trimmingCharacters(in: .whitespacesAndNewlines))
 			}
@@ -170,7 +171,6 @@ struct BSAppsView: View {
 			BSAppIndex.cache(items, for: key)
 		}
 		_index = items
-		_isIndexing = false
 
 		if _isSearching {
 			_results = BSAppIndex.filter(items, query: _query.trimmingCharacters(in: .whitespacesAndNewlines))

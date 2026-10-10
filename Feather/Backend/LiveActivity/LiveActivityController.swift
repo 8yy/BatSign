@@ -749,6 +749,12 @@ final class LiveActivityController {
 	/// have finished long after the island moved on to the next transfer, and it
 	/// has no business ending a card that is no longer about it.
 	func finish(success: Bool, appName: String, detail: String, appID: String? = nil) {
+		let current = activity ?? _adoptJobCard(for: appID)
+		// Validate ownership before changing shared job state. A late terminal
+		// callback from an earlier transfer must not mark the current transfer
+		// inactive merely because its card belongs to a different app.
+		if let appID, !appID.isEmpty, let current, !isSameJob(appID, as: current) { return }
+
 		// The job is over whatever the card did, so a stray update that arrives
 		// after this one has no active job to revive.
 		jobIsActive = false
@@ -758,8 +764,7 @@ final class LiveActivityController {
 		// process was restarted under it. It is still on screen, and a result
 		// that cannot reach it is the island left saying "Signing and installing"
 		// after the app is already on the Home Screen. Asked for, adopted, ended.
-		guard let current = activity ?? _adoptJobCard(for: appID) else { return }
-		if let appID, !appID.isEmpty, !isSameJob(appID, as: current) { return }
+		guard let current else { return }
 
 		var state = DownloadActivityAttributes.ContentState(
 			phase: success ? .finished : .failed,
@@ -1256,6 +1261,15 @@ final class LiveActivityController {
 			await current.update(content(state))
 		}
 		isPushing = false
+		// A replacement generation can enqueue while this drain is suspended in
+		// ActivityKit. That enqueue sees `isPushing` and leaves its state pending;
+		// the old drain then exits on the generation check. Hand the pump to the
+		// newest generation here or that state remains stranded until another tick.
+		if pending != nil, activity != nil {
+			isPushing = true
+			let nextToken = generation
+			Task { await drain(nextToken) }
+		}
 	}
 
 	/// Every live state carries the moment it stops being true, so an app that

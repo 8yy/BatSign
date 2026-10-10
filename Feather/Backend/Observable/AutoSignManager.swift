@@ -968,122 +968,90 @@ final class AutoSignManager: ObservableObject {
 		let method = UserDefaults.standard.integer(forKey: "Feather.installationMethod")
 		guard method == 0 || method == 1 else { return false }
 
-		// charging-only preference: hold the install until power is connected
 		if UserDefaults.standard.object(forKey: "BatSign.installChargingOnly") as? Bool ?? false {
 			let state = UIDevice.current.batteryState
-			guard state == .charging || state == .full else {					AutoUpdateManager.shared.notify(
-						title: "\(app.name ?? "App") is waiting for power",
-						body: "Connect your device to a charger to finish installing.",
-						identifier: "signos.charging.\(app.uuid ?? UUID().uuidString)"
-					)
-					return false
-				}
+			guard state == .charging || state == .full else {
+				AutoUpdateManager.shared.notify(
+					title: "\(app.name ?? "App") is waiting for power",
+					body: "Connect your device to a charger to finish installing.",
+					identifier: "signos.charging.\(app.uuid ?? UUID().uuidString)"
+				)
+				return false
+			}
 		}
 
 		ArchiveHandler.fastestCompressionOverride = true
 		defer { ArchiveHandler.fastestCompressionOverride = false }
-
-		// What the device had before the hand-off, taken now: by the time the
-		// system reports anything, the build being replaced may already be gone
-		// and there would be nothing left to compare against.
 		if let identifier = app.identifier {
 			BSInstallWatcher.shared.arm(identifier, expecting: _builtIdentity(of: app))
 		}
 
-		// From here the work moves out of the download and into signing and
-		// installing, and the live card follows it instead of disappearing. The
-		// hand-off has no fraction yet, so it is announced as a phase and the
-		// real install percentage replaces it as soon as the system reports one.
-		//
-		// `ensure` and not `update`: this can be the first thing that runs — an
-		// install started from a notification has no download card behind it —
-		// and a job with no card is a job the user cannot see.
 		LiveStatus.ensure(
 			appID: app.identifier ?? "",
 			appName: app.name ?? "App",
 			phase: .installing,
-			detail: _cardDetail(
-				method == 1 ? "Installing over the tunnel" : "Handing the package to iOS",
-				batch
-			),
+			detail: _cardDetail(method == 1 ? "Installing over the tunnel" : "Handing the package to iOS", batch),
 			mode: Self.installMode,
 			queued: batch?.remaining
 		)
 
 		do {
 			if method == 1 {
-				let viewModel = InstallerStatusViewModel(isIdevice: true)
-				let handler = ArchiveHandler(app: app, viewModel: viewModel)
-				// The tunnel's install is synchronous: when it returns — or when
-				// it throws — nothing is streaming from the working copy any more,
-				// and the full app copy it holds can go now rather than on the next
-				// launch's sweep.
-				defer { handler.clean() }
-				try await handler.move()
-				let packageUrl = try await handler.archive()
-
-				let proxy = InstallationProxy(viewModel: viewModel)
-				try await proxy.install(at: packageUrl, suspend: false)
-
-				ActivityLog.shared.log(.installed, app: app.name ?? "App")
-
-				// The watcher armed above is the other way this same landing can
-				// be told: a return to the foreground while `install` was running
-				// reconciles the ledger and reports it. Announcing from here too,
-				// unconditionally, is how one tunnel install produced two
-				// identical "Installed" popups — the dedupe lives in the ledger
-				// both paths are supposed to honour, and this path now does.
-				let landingIdentifier = app.identifier ?? app.uuid ?? UUID().uuidString
-				let landingBuild = _builtIdentity(of: app)?.described
-				if !BSInstallLedger.hasBeenReported(landingIdentifier, build: landingBuild) {
-					BSInstallLedger.noteReported(landingIdentifier, build: landingBuild)
-					announceInstallLanded(
-						name: app.name ?? "App",
-						identifier: landingIdentifier
-					)
-				}
-
-				// The tunnel's install is synchronous — the call above returned only
-				// once installd said it was done — so there is nothing to follow and
-				// the armed baseline is not needed.
-				BSInstallWatcher.shared.cancel(app.identifier)
-				LiveStatus.finish(
-					success: true,
-					appName: app.name ?? "App",
-					detail: "Installed on this iPhone",
-					appID: app.identifier
-				)
+				try await _installOverPairingTunnel(app)
 			} else {
-				try await _serverInstall(app)
-				// iOS takes over from here: it fetches the package from our own
-				// server and installs it, at its own pace, possibly with the user
-				// already on the Home Screen. The watcher follows that to its end
-				// instead of leaving a card at "Installing" until iOS times it out.
-					if let identifier = app.identifier {
-						BSInstallWatcher.shared.follow(
-							identifier,
-							name: app.name ?? "App",
-							expecting: _builtIdentity(of: app)
+				do {
+					try await _serverInstall(app)
+				} catch {
+					// The HTTPS server can fail before handing any URL to iOS. In that
+					// safe window, a valid imported pairing file allows a certificate-
+					// independent installation. Without pairing, surface a useful error.
+					guard FileManager.default.fileExists(atPath: HeartbeatManager.pairingFile()) else {
+						throw NSError(
+							domain: "BatSign.Installation",
+							code: 11,
+							userInfo: [NSLocalizedDescriptionKey: String.localized("The OTA server is unavailable and no pairing file is installed. Import a pairing record and connect LocalDevVPN in Settings → Installation → idevice, or install a replacement trusted server certificate.")]
 						)
 					}
+					try await _installOverPairingTunnel(app)
+					return true
 				}
-				return true
-			} catch {
+
+				if let identifier = app.identifier {
+					BSInstallWatcher.shared.follow(identifier, name: app.name ?? "App", expecting: _builtIdentity(of: app))
+				}
+			}
+			return true
+		} catch {
 			announceInstallFailed(
 				name: app.name ?? "App",
 				identifier: app.uuid ?? UUID().uuidString,
 				message: error.localizedDescription
 			)
-				BSInstallWatcher.shared.cancel(app.identifier)
-				LiveStatus.finish(
-					success: false,
-					appName: app.name ?? "App",
-					detail: error.localizedDescription,
-					appID: app.identifier
-				)
-				return false
-			}
+			BSInstallWatcher.shared.cancel(app.identifier)
+			LiveStatus.finish(success: false, appName: app.name ?? "App", detail: error.localizedDescription, appID: app.identifier)
+			return false
 		}
+	}
+
+	/// Install through the paired-device tunnel without any dependence on the
+	/// OTA server's HTTPS identity or external manifest host.
+	private func _installOverPairingTunnel(_ app: Signed) async throws {
+		let viewModel = InstallerStatusViewModel(isIdevice: true)
+		let handler = ArchiveHandler(app: app, viewModel: viewModel)
+		defer { handler.clean() }
+		try await handler.move()
+		let packageURL = try await handler.archive()
+		try await InstallationProxy(viewModel: viewModel).install(at: packageURL, suspend: false)
+		ActivityLog.shared.log(.installed, app: app.name ?? "App")
+		let landingIdentifier = app.identifier ?? app.uuid ?? UUID().uuidString
+		let landingBuild = _builtIdentity(of: app)?.described
+		if !BSInstallLedger.hasBeenReported(landingIdentifier, build: landingBuild) {
+			BSInstallLedger.noteReported(landingIdentifier, build: landingBuild)
+			announceInstallLanded(name: app.name ?? "App", identifier: landingIdentifier)
+		}
+		BSInstallWatcher.shared.cancel(app.identifier)
+		LiveStatus.finish(success: true, appName: app.name ?? "App", detail: "Installed over the pairing tunnel", appID: app.identifier)
+	}
 
 	/// How this job is being packaged, in the words the setting uses.
 	///
@@ -1124,16 +1092,29 @@ final class AutoSignManager: ObservableObject {
 
 	private func _serverInstall(_ app: Signed) async throws {
 		let viewModel = InstallerStatusViewModel(isIdevice: false)
+		let installer = ServerInstaller(app: app, viewModel: viewModel)
+		guard installer.isAvailable else {
+			throw installer.startupError ?? NSError(
+				domain: "BatSign.Installation",
+				code: 10,
+				userInfo: [NSLocalizedDescriptionKey: String.localized("The OTA server could not start. Its HTTPS certificate is unavailable, invalid, or revoked; set up a pairing file and tunnel or install a new trusted certificate.")]
+			)
+		}
+
 		let handler = ArchiveHandler(app: app, viewModel: viewModel)
 		try await handler.move()
 		let packageUrl = try await handler.archive()
+		installer.packageUrl = packageUrl
+		Self._retainInstaller(installer)
+		Self._liveArchiveHandlers[ObjectIdentifier(installer)] = handler
 
-			let installer = try ServerInstaller(app: app, viewModel: viewModel)
-			installer.packageUrl = packageUrl
-			Self._retainInstaller(installer)
-			Self._liveArchiveHandlers[ObjectIdentifier(installer)] = handler
-
-		guard let url = URL(string: installer.iTunesLink) else { return }
+		guard let url = URL(string: installer.iTunesLink) else {
+			throw NSError(
+				domain: "BatSign.Installation",
+				code: 12,
+				userInfo: [NSLocalizedDescriptionKey: String.localized("The iOS install URL could not be constructed. No installation request was sent.")]
+			)
+		}
 
 		// The hand-off is asked for from wherever the app happens to be, and it is
 		// asked for again until the system answers.

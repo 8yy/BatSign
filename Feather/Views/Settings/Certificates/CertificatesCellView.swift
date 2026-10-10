@@ -51,7 +51,7 @@ extension CertificatesCellView {
 	private func _certInfoPill(data: CertificatePair) -> some View {
 		let pillItems = _buildPills(from: data)
 		HStack(spacing: 6) {
-			ForEach(pillItems.indices, id: \.hashValue) { index in
+			ForEach(pillItems.indices, id: \.self) { index in
 				let pill = pillItems[index]
 				NBPillView(
 					title: pill.title,

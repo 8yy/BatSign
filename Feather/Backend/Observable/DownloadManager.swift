@@ -786,16 +786,42 @@ class DownloadManager: NSObject, ObservableObject {
 	/// session. It is called when there is nothing left for the session to
 	/// deliver, and until then the app must stay up — otherwise the package that
 	/// just arrived is dropped instead of signed.
-	private var _backgroundCompletion: (() -> Void)?
+	private let _backgroundCompletionLock = NSLock()
+	private var _backgroundCompletions: [() -> Void] = []
+	/// URLSession may finish delivering its events before the app delegate's
+	/// wake-up handler reaches this object. Remember that boundary so attaching
+	/// the handler afterwards cannot strand iOS waiting for completion.
+	private var _backgroundEventsFinishedBeforeAttach = false
 
 	func attachBackgroundCompletion(_ handler: @escaping () -> Void) {
-		_backgroundCompletion = handler
+		let finishNow: Bool
+		_backgroundCompletionLock.lock()
+		finishNow = _backgroundEventsFinishedBeforeAttach
+		if finishNow {
+			_backgroundEventsFinishedBeforeAttach = false
+		} else {
+			_backgroundCompletions.append(handler)
+		}
+		_backgroundCompletionLock.unlock()
+
+		if finishNow {
+			DispatchQueue.main.async(execute: handler)
+		}
 	}
 
 	func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-		DispatchQueue.main.async { [weak self] in
-			self?._backgroundCompletion?()
-			self?._backgroundCompletion = nil
+		let completions: [() -> Void]
+		_backgroundCompletionLock.lock()
+		completions = _backgroundCompletions
+		_backgroundCompletions.removeAll(keepingCapacity: true)
+		if completions.isEmpty {
+			_backgroundEventsFinishedBeforeAttach = true
+		}
+		_backgroundCompletionLock.unlock()
+
+		guard !completions.isEmpty else { return }
+		DispatchQueue.main.async {
+			completions.forEach { $0() }
 		}
 	}
 
@@ -1220,9 +1246,15 @@ extension DownloadManager: URLSessionDownloadDelegate {
 						dl,
 						reason: err?.localizedDescription ?? "Couldn't open the package"
 					)
+					DownloadManager.shared._drop(dl)
 				}
 			} else {
-			// An update is re-signed and re-installed the same way a first
+				// A valid download is not necessarily a valid package. Announce
+				// completion only after extraction and Library import succeeded.
+				DispatchQueue.main.async {
+					DownloadManager.shared._noteDelivered(dl)
+				}
+				// An update is re-signed and re-installed the same way a first
 			// install is, and it is named as the phase that exists for it: the
 			// user tapped "Update" on an app they already have, and the card
 			// says which of the two jobs this is. The transfer's own id is what
@@ -1355,10 +1387,14 @@ extension DownloadManager: URLSessionDownloadDelegate {
 			throw StagingFailure.sourceVanished
 		}
 
+		// A duplicate delivery or the rescue session may already have staged
+		// this transfer. Never replace a destination another importer may be
+		// reading; the first complete staged copy owns this path.
+		if fm.fileExists(atPath: destination.path) { return .alreadyStaged }
+
 		let incoming = directory.appendingPathComponent(
-			destination.lastPathComponent + ".incoming"
+			destination.lastPathComponent + ".incoming-\(UUID().uuidString)"
 		)
-		try? fm.removeItem(at: incoming)
 
 		do {
 			try fm.copyItem(at: location, to: incoming)
@@ -1375,12 +1411,14 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
 		do {
 			if fm.fileExists(atPath: destination.path) {
-				_ = try fm.replaceItemAt(destination, withItemAt: incoming)
+				try? fm.removeItem(at: incoming)
+				return .alreadyStaged
 			} else {
 				try fm.moveItem(at: incoming, to: destination)
 			}
 		} catch {
 			try? fm.removeItem(at: incoming)
+			if fm.fileExists(atPath: destination.path) { return .alreadyStaged }
 			throw StagingFailure.destination(error.localizedDescription)
 		}
 
@@ -1535,10 +1573,6 @@ extension DownloadManager: URLSessionDownloadDelegate {
 			// resumed from disk rather than fetched a second time.
 			BSJobJournal.shared.stage(transfer: download.id, package: destinationURL)
 
-			DispatchQueue.main.async { [weak self] in
-				self?._noteDelivered(download)
-			}
-
 			// The transfer is done the moment the bytes are here; everything after
 			// this is packaging, which has no fraction of its own — so the island
 			// is told there is none and shows that instead of a bar at 100%.
@@ -1614,7 +1648,8 @@ extension DownloadManager: URLSessionDownloadDelegate {
 		// and the journal's newest record otherwise: either way the import
 		// below links the Library entry the way a foreground download does.
 		let pending = BSJobJournal.shared.pending
-		let journalMatches = pending.map { downloadTask.originalRequest?.url?.absoluteString == $0.url } ?? false
+		let deliveredURL = downloadTask.originalRequest?.url ?? downloadTask.currentRequest?.url
+		let journalMatches = pending.map { deliveredURL?.absoluteString == $0.url } ?? false
 
 		Self.log.error("download: finished file with no transfer in memory — task \(downloadTask.taskIdentifier) url \(downloadTask.originalRequest?.url?.absoluteString ?? "nil", privacy: .public) registry [\(self._registryDescription, privacy: .public)] journal \(pending?.url ?? "none", privacy: .public) matches \(journalMatches, privacy: .public)")
 
@@ -1627,7 +1662,13 @@ extension DownloadManager: URLSessionDownloadDelegate {
 			return
 		}
 
-		guard let pending, journalMatches || downloadTask.originalRequest == nil else { return }
+		guard let pending, journalMatches else {
+			// There is no transfer or journal record that can ever adopt this
+			// staged copy. Keeping it would leak an ownerless package on every
+			// background-session delivery with stale task metadata.
+			try? FileManager.default.removeItem(at: keep)
+			return
+		}
 
 		// The body the server sent has to be what it claims to be before any of
 		// it is promised to the user. A 200 with an error page inside is the
@@ -1636,6 +1677,19 @@ extension DownloadManager: URLSessionDownloadDelegate {
 		guard Self._hasZipSignature(at: keep) else {
 			Self.log.error("download: the finished file is not a zip archive — dropped")
 			try? FileManager.default.removeItem(at: keep)
+			// A matching journal makes this a failed delivery, not merely an
+			// orphaned file. Retire only that transfer so launch recovery does not
+			// silently fetch the same invalid body again.
+			if pending.localPackagePath == nil {
+				BSJobJournal.shared.clearIf(transferID: pending.transferID)
+				let name = pending.name ?? Self.displayName(for: URL(string: pending.url) ?? keep)
+				let identifier = pending.bundleID ?? pending.transferID
+				let reason = "The file the server sent is not an app package."
+				DispatchQueue.main.async {
+					LiveStatus.finish(success: false, appName: name, detail: reason, appID: identifier)
+					AutoSignManager.shared.announceDownloadFailed(name: name, identifier: identifier, message: reason)
+				}
+			}
 			return
 		}
 		BSJobJournal.shared.stage(transfer: pending.transferID, package: keep)
@@ -1655,9 +1709,6 @@ extension DownloadManager: URLSessionDownloadDelegate {
 		// The bytes arrived and this path is the one taking them up, so the
 		// timeline gets its line here — the same one the in-memory path writes
 		// when it delivers, and never a second copy of it.
-		DispatchQueue.main.async {
-			AutoSignManager.shared.announceDownloadFinished(name: cardName)
-		}
 		LiveStatus.begin(
 			appID: cardID,
 			appName: cardName,
@@ -1682,6 +1733,10 @@ extension DownloadManager: URLSessionDownloadDelegate {
 		FR.handlePackageFile(keep, transferID: pending.transferID) { error in
 			if let error {
 				Self.log.error("download: orphaned package failed to import — \(error.localizedDescription, privacy: .public)")
+				// This callback owns a staged package from the matching journal.
+				// Retire that exact job on validation/import failure, or launch
+				// recovery will repeatedly feed the same bad archive to the importer.
+				BSJobJournal.shared.clearIf(transferID: pending.transferID)
 				LiveStatus.finish(
 					success: false,
 					appName: cardName,
@@ -1696,6 +1751,9 @@ extension DownloadManager: URLSessionDownloadDelegate {
 					)
 				}
 				return
+			}
+			DispatchQueue.main.async {
+				AutoSignManager.shared.announceDownloadFinished(name: cardName)
 			}
 			// An update, by the same test the importer uses on the transfer's
 			// id: the app is already in the Library and is being re-signed
@@ -1827,6 +1885,15 @@ extension DownloadManager: URLSessionDownloadDelegate {
 		_disarmStallCheck(for: download)
 		_lastByteAt[download.id] = nil
 
+		// Cancellation can win after the refetch has finished but before its
+		// callback reaches the main queue. Never resurrect a removed transfer.
+		guard downloads.contains(where: { $0 === download }) else {
+			if case .success(let saved) = result {
+				try? FileManager.default.removeItem(at: saved)
+			}
+			return
+		}
+
 		switch result {
 		case .failure(let error):
 			// A refetch this app cancelled is work somebody else has already
@@ -1854,7 +1921,6 @@ extension DownloadManager: URLSessionDownloadDelegate {
 			}
 
 			BSJobJournal.shared.stage(transfer: download.id, package: saved)
-			_noteDelivered(download)
 
 			LiveStatus.update(
 				phase: .unpacking,

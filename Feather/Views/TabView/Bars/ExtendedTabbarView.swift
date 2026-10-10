@@ -25,7 +25,7 @@ struct ExtendedTabbarView: View {
 		// the system lifts it out of the bar and draws it as the separate lens —
 		// BatSign's bar on iOS 26, owned by the platform rather than hand-drawn.
 		TabView(selection: $_selection) {
-			ForEach(TabEnum.defaultTabs, id: \.hashValue) { tab in
+			ForEach(TabEnum.defaultTabs, id: \.self) { tab in
 				Tab(tab.title, systemImage: tab.icon, value: tab) {
 					TabEnum.view(for: tab)
 						// The bar's tint is set below, on the `TabView` itself, because

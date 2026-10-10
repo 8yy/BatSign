@@ -36,30 +36,44 @@ struct AppearanceTintColorView: View {
 							10.5
 						}
 					}()
-					VStack(spacing: 8) {
-						Circle()
-							.fill(color)
-							.frame(width: 30, height: 30)
-							.overlay(
-								Circle()
+					Button {
+						withAnimation(.easeInOut(duration: 0.18)) {
+							_selectedColorHex = option.hex
+						}
+					} label: {
+						VStack(spacing: 8) {
+							Circle()
+								.fill(color)
+								.frame(width: 30, height: 30)
+								.overlay(
+									Circle()
 									.strokeBorder(Color.black.opacity(0.3), lineWidth: 2)
-							)
+								)
 
-						Text(option.name)
-							.font(.subheadline)
-							.foregroundColor(.secondary)
+							Text(option.name)
+								.font(.subheadline)
+								.foregroundColor(.secondary)
+						}
+						.frame(width: 120, height: 100)
+						.background(BS.cardFill)
+						.clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+						.overlay(
+							RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+								.strokeBorder(_selectedColorHex == option.hex ? color : .clear, lineWidth: 2)
+						)
+						.overlay(alignment: .topTrailing) {
+							if _selectedColorHex == option.hex {
+								Image(systemName: "checkmark.circle.fill")
+									.font(.system(size: 18, weight: .semibold))
+									.foregroundStyle(color)
+									.padding(8)
+									.accessibilityHidden(true)
+							}
+						}
 					}
-					.frame(width: 120, height: 100)
-					.background(BS.cardFill)
-					.clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-					.overlay(
-						RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-							.strokeBorder(_selectedColorHex == option.hex ? color : .clear, lineWidth: 2)
-					)
-					.onTapGesture {
-						_selectedColorHex = option.hex
-					}
+					.buttonStyle(.plain)
 					.accessibilityLabel(Text(option.name))
+					.accessibilityAddTraits(_selectedColorHex == option.hex ? .isSelected : [])
 				}
 			}
 		}

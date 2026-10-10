@@ -14,34 +14,32 @@ extension Storage {
 		uuid: String,
 		source: URL? = nil,
 		certificate: CertificatePair? = nil,
-		
+
 		appName: String? = nil,
 		appIdentifier: String? = nil,
 		appVersion: String? = nil,
 		appIcon: String? = nil,
-		
+
 		completion: @escaping (Error?) -> Void
 	) {
-		// The insert happens where the context lives, not on whatever thread the
-		// signing pipeline happens to be on. See `Storage.perform`.
+		var saveError: Error?
 		perform {
 			let new = Signed(context: self.context)
-			
 			new.uuid = uuid
 			new.source = source
 			new.date = Date()
-			// if nil, we assume adhoc or certificate was deleted afterwards
 			new.certificate = certificate
-			// could possibly be nil, but thats fine.
 			new.identifier = appIdentifier
 			new.name = appName
 			new.icon = appIcon
 			new.version = appVersion
-			
-			self.saveContext()
+			saveError = self.saveContext()
+			if saveError != nil {
+				self.context.delete(new)
+			}
 		} then: {
 			UIImpactFeedbackGenerator(style: .light).impactOccurred()
-			completion(nil)
+			completion(saveError)
 		}
 	}
 

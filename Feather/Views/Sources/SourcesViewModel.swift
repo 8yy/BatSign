@@ -24,6 +24,7 @@ final class SourcesViewModel: ObservableObject {
 	private let _dataService = NBFetchService()
 	
 	var isFinished = true
+	private var _fetchTask: Task<Void, Never>?
 	@Published var sources: [AltSource: ASRepository] = [:]
 	
 	/// Fetch the repositories behind `sources`.
@@ -33,16 +34,31 @@ final class SourcesViewModel: ObservableObject {
 	/// from management there), while Apps and Today pass their full fetch results.
 	@MainActor
 	func fetchSources(_ sources: some Collection<AltSource>, refresh: Bool = false, batchSize: Int = 4) async {
-		guard isFinished else { return }
+		// If another tab started the same shared fetch first, wait for it instead
+		// of dropping this caller's request. This avoids Today remaining empty when
+		// Sources or Apps owns the initial fetch during cold launch.
+		if !isFinished {
+			await _fetchTask?.value
+			if !refresh, sources.allSatisfy({ self.sources[$0] != nil }) { return }
+		}
 		
-		// check if sources to be fetched are the same as before, if yes, return
-		// also skip check if refresh is true
 		if !refresh, sources.allSatisfy({ self.sources[$0] != nil }) { return }
-		
-		// isfinished is used to prevent multiple fetches at the same time
 		isFinished = false
-		defer { isFinished = true }
+		let fetchTask = Task { @MainActor in
+			defer { isFinished = true; _fetchTask = nil }
+			await _performFetch(sources, refresh: refresh, batchSize: batchSize)
+		}
+		_fetchTask = fetchTask
+		await fetchTask.value
+	}
+
+	private func _performFetch(
+		_ sources: some Collection<AltSource>,
+		refresh: Bool,
+		batchSize: Int
+	) async {
 		
+		let previouslyFetched = self.sources
 		self.sources = [:]
 		
 		// The fetches run off the main actor and the sources are viewContext
@@ -85,7 +101,12 @@ final class SourcesViewModel: ObservableObject {
 			}
 			
 			for (source, url) in batch {
-				guard let repo = batchResults[url] else { continue }
+				guard let repo = batchResults[url] else {
+					if let previous = previouslyFetched[source] {
+						self.sources[source] = previous
+					}
+					continue
+				}
 				self.sources[source] = repo
 			}
 		}

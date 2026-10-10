@@ -48,6 +48,7 @@ extension Storage {
 			}
 			completion(nil)
 		} catch {
+			context.delete(new)
 			completion(error)
 		}
 	}
@@ -76,21 +77,26 @@ extension Storage {
 		completion: @escaping (Error?) -> Void
 	) {
 		let generator = UIImpactFeedbackGenerator(style: .light)
+		var addedSources: [AltSource] = []
+		var seenIdentifiers = Set<String>()
 		
 		for (url, repo) in repos {
-			addSource(
-				url,
-				repository: repo,
-				deferSave: true,
-				completion: { error in
-					if let error {
-						completion(error)
-					}
-				}
-			)
+			let identifier = repo.id ?? url.absoluteString
+			guard seenIdentifiers.insert(identifier).inserted, !sourceExists(identifier) else { continue }
+			let source = AltSource(context: context)
+			source.name = repo.name
+			source.date = Date()
+			source.identifier = identifier
+			source.sourceURL = url
+			source.iconURL = repo.currentIconURL
+			addedSources.append(source)
 		}
 		
-		saveContext()
+		if let error = saveContext() {
+			addedSources.forEach(context.delete)
+			completion(error)
+			return
+		}
 		generator.impactOccurred()
 		completion(nil)
 	}

@@ -153,7 +153,9 @@ struct BSStoryCard: View {
 				wideBanner = nil
 				return
 			}
-			wideBanner = await BSArtwork.shared.isWide(candidate) ? candidate : nil
+			// Render the source artwork immediately. Nuke paints the existing tint
+			// fallback while downloading; don't gate the card on a separate probe.
+			wideBanner = candidate
 		}
 		.task(id: app.iconURL) {
 			guard iconTint == nil, let icon = app.iconURL else { return }

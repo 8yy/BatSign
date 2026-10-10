@@ -132,7 +132,13 @@ struct LibraryView: View {
 							)
 						}
 					}
-					.animation(.snappy(duration: 0.22), value: _isSelecting)
+				.animation(.snappy(duration: 0.22), value: _isSelecting)
+				.onChange(of: _searchText) { _ in
+					_selection.removeAll()
+				}
+				.onChange(of: _selectedScope) { _ in
+					_selection.removeAll()
+				}
 				// The word, like every other tab has. The count underneath it is the
 				// eyebrow for the list, not a replacement for the screen's own name —
 				// without this the Library was the one tab that never said what it

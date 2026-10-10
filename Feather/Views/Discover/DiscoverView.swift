@@ -87,7 +87,9 @@ struct DiscoverView: View {
 					SettingsView()
 				}
 				.sheet(isPresented: $_isUpdatesPresenting) {
-					UpdatesView()
+					NavigationStack {
+						UpdatesView()
+					}
 				}
 				#if DEBUG
 				.sheet(item: $_debugPage) { page in

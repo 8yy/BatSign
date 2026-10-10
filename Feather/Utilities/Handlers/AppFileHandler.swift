@@ -376,10 +376,9 @@ final class AppFileHandler: NSObject, @unchecked Sendable {
 	/// the archive if any of them would be unpacked outside of `base`.
 	private static func _rejectUnsafeArchiveEntries(_ url: URL, base: URL) throws {
 		guard let entryNames = _zipEntryNames(in: url) else {
-			// a central directory we cannot read is one the unzip is going to
-			// trip over itself, so this is worth a note rather than a refusal
-			Logger.misc.warning("Skipped archive entry validation for \(url.lastPathComponent, privacy: .public)")
-			return
+			// Unpacking without a readable central directory skips the path
+			// traversal check, so malformed archives must fail closed.
+			throw ImportedFileHandlerError.unreadablePackage(url.lastPathComponent)
 		}
 		
 		let basePath = base.standardized.path
@@ -459,37 +458,39 @@ final class AppFileHandler: NSObject, @unchecked Sendable {
 	
 	/// Walks the records of a central directory, each one names an entry.
 	private static func _entryNames(in directory: Data) -> [String]? {
-		guard _uint32(directory, 0) == 0x02014b50 else {
+		guard !directory.isEmpty, _uint32(directory, 0) == 0x02014b50 else {
 			return nil
 		}
 		
 		var names: [String] = []
 		var offset = 0
 		
-		while offset + 46 <= directory.count {
-			// anything that is not another record is the end of the directory,
-			// or a record that carries no name of its own
-			guard _uint32(directory, offset) == 0x02014b50 else {
-				break
+		while offset < directory.count {
+			guard
+				offset + 46 <= directory.count,
+				_uint32(directory, offset) == 0x02014b50
+			else {
+				return nil
 			}
 			
 			guard
 				let nameLength = _uint16(directory, offset + 28),
 				let extraLength = _uint16(directory, offset + 30),
 				let commentLength = _uint16(directory, offset + 32),
-				offset + 46 + nameLength <= directory.count
+				46 + nameLength + extraLength + commentLength <= directory.count - offset
 			else {
 				return nil
 			}
+			let recordLength = 46 + nameLength + extraLength + commentLength
 			
 			let nameData = directory.subdata(in: (offset + 46)..<(offset + 46 + nameLength))
 			// utf8 is what the format asks for, a latin-1 reading still keeps
 			// the separators and dots of an older archive intact
 			names.append(String(data: nameData, encoding: .utf8) ?? String(data: nameData, encoding: .isoLatin1) ?? "")
 			
-			offset += 46 + nameLength + extraLength + commentLength
+			offset += recordLength
 		}
-		
+		guard offset == directory.count else { return nil }
 		return names
 	}
 	

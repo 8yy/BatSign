@@ -28,8 +28,8 @@ extension InstallerStatusViewModel {
 		case .sendingManifest: .localized("Sending Manifest")
 		case .sendingPayload: .localized("Sending Payload")
 		case .installing: .localized("Installing")
-		case .completed: .localized("Completed")
-		case .broken: .localized("Error")
+			case .completed: .localized("Completed")
+			case let .broken(error): error.localizedDescription
 		}
 	}
 }

@@ -288,6 +288,44 @@ final class BSBackgroundTasks {
 	/// interrupted by something a third attempt would only be fighting.
 	private let maximumAttempts = 2
 
+	/// BGProcessingTask expiration runs on a system queue while the handler is
+	/// suspended on the main actor. Keep expiration and completion in one lock so
+	/// the handler cannot report success after the system has expired the task.
+	private final class ProcessingCompletion: @unchecked Sendable {
+		private let lock = NSLock()
+		private var task: BGProcessingTask?
+		private var expired = false
+
+		init(_ task: BGProcessingTask) {
+			self.task = task
+		}
+
+		var isExpired: Bool {
+			lock.lock(); defer { lock.unlock() }
+			return expired
+		}
+
+		func expire() {
+			lock.lock()
+			expired = true
+			let task = self.task
+			self.task = nil
+			lock.unlock()
+
+			task?.setTaskCompleted(success: false)
+		}
+
+		func complete(success: Bool) {
+			lock.lock()
+			let task = self.task
+			self.task = nil
+			let finalSuccess = success && !expired
+			lock.unlock()
+
+			task?.setTaskCompleted(success: finalSuccess)
+		}
+	}
+
 	// MARK: - Registration
 
 	/// Register the handlers. Must run before launch finishes.
@@ -343,6 +381,9 @@ final class BSBackgroundTasks {
 
 	/// The system has woken the app to finish what it was doing.
 	private func _handleContinuation(_ task: BGProcessingTask) async {
+		let completion = ProcessingCompletion(task)
+		task.expirationHandler = { completion.expire() }
+
 		// The request has been consumed; ask for the next chance before doing
 		// anything that can fail, so work interrupted twice is still asked for
 		// a third time.
@@ -350,16 +391,11 @@ final class BSBackgroundTasks {
 
 		guard let pending = BSJobJournal.shared.pending else {
 			Self.log.notice("background: woken with nothing to finish")
-			task.setTaskCompleted(success: true)
+			completion.complete(success: true)
 			return
 		}
 
 		Self.log.notice("background: woken to finish \(pending.name ?? pending.url, privacy: .public)")
-
-		var expired = false
-		task.expirationHandler = {
-			Task { @MainActor in expired = true }
-		}
 
 		// Whether anything was running when we arrived. `resume` starts the work
 		// asynchronously — a staged package is handed to the importer and a
@@ -380,17 +416,17 @@ final class BSBackgroundTasks {
 		var sawHold = wasHolding
 		for _ in 0..<20 {
 			if BSJobKeepAlive.shared.isHolding { sawHold = true; break }
-			if expired { break }
+			if completion.isExpired { break }
 			try? await Task.sleep(nanoseconds: 250_000_000)
 		}
 
 		if sawHold {
-			while !expired, BSJobKeepAlive.shared.isHolding {
+			while !completion.isExpired, BSJobKeepAlive.shared.isHolding {
 				try? await Task.sleep(nanoseconds: 1_000_000_000)
 			}
 		}
 
-		task.setTaskCompleted(success: !expired)
+		completion.complete(success: true)
 	}
 
 	// MARK: - Recovery

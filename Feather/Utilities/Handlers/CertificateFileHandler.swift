@@ -46,27 +46,35 @@ final class CertificateFileHandler: NSObject {
 		}
 		
 		let destinationURL = try await _directory()
-
 		try _fileManager.createDirectory(at: destinationURL, withIntermediateDirectories: true)
-		try _fileManager.copyItem(at: _key, to: destinationURL.appendingPathComponent(_key.lastPathComponent))
-		try _fileManager.copyItem(at: _provision, to: destinationURL.appendingPathComponent(_provision.lastPathComponent))
+		do {
+			try _fileManager.copyItem(at: _key, to: destinationURL.appendingPathComponent(_key.lastPathComponent))
+			try _fileManager.copyItem(at: _provision, to: destinationURL.appendingPathComponent(_provision.lastPathComponent))
+		} catch {
+			try? _fileManager.removeItem(at: destinationURL)
+			throw error
+		}
 	}
 	
 	func addToDatabase() async throws {
-		// `addCertificate` builds the object on the store's context, lets
-		// `revokagedCertificate` read it back, saves, and fires a haptic — all of
-		// which belong to the main queue. The handler's own inputs are plain values,
-		// so only the call moves.
-		await MainActor.run {
-			Storage.shared.addCertificate(
-				uuid: _uuid,
-				password: _keyPassword,
-				nickname: _certNickname,
-				ppq: _certPair?.PPQCheck ?? false,
-				expiration: _certPair?.ExpirationDate ?? Date(),
-				isDefault: _isDefault
-			) { _ in
-				Logger.misc.info("[\(self._uuid)] Added to database")
+		try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+			Task { @MainActor in
+				Storage.shared.addCertificate(
+					uuid: _uuid,
+					password: _keyPassword,
+					nickname: _certNickname,
+					ppq: _certPair?.PPQCheck ?? false,
+					expiration: _certPair?.ExpirationDate ?? Date(),
+					isDefault: _isDefault
+				) { error in
+					if let error {
+						try? self._fileManager.removeItem(at: self._fileManager.certificates(self._uuid))
+						continuation.resume(throwing: error)
+					} else {
+						Logger.misc.info("[\(self._uuid)] Added to database")
+						continuation.resume()
+					}
+				}
 			}
 		}
 	}
